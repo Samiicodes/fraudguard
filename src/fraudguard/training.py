@@ -224,7 +224,7 @@ def prepare_data(config: AppConfig, use_sample_data: bool) -> PreparedData:
     data_path = config.data.sample_path if use_sample_data else config.data.raw_path
     logger.info('Loading dataset')
     raw = load_raw_transactions(data_path)
-    logger.info('Loaded %d rows from %s', len(raw), data_path.as_posix())
+    logger.info('Loaded %s rows from %s', f'{len(raw):,}', data_path.as_posix())
 
     logger.info('Validating schema')
     validation_report = validate_transactions(raw, config.validation)
@@ -238,11 +238,11 @@ def prepare_data(config: AppConfig, use_sample_data: bool) -> PreparedData:
     # Guard against leakage: no input vector may appear in more than one split
     assert_no_split_overlap(splits)
     logger.info(
-        'Split %d rows into train %d, validation %d, test %d',
-        len(cleaned),
-        len(splits.train),
-        len(splits.validation),
-        len(splits.test),
+        'Split %s rows into train %s, validation %s, test %s',
+        f'{len(cleaned):,}',
+        f'{len(splits.train):,}',
+        f'{len(splits.validation):,}',
+        f'{len(splits.test):,}',
     )
 
     logger.info('Fitting preprocessor on the training split')

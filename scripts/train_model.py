@@ -53,9 +53,6 @@ def main() -> None:
         logger.error('%s', error)
         raise SystemExit(1) from error
 
-    logger.info(
-        'Champion %s registered as version %s', summary.champion_name, summary.model_version
-    )
     logger.info('Decision threshold %.3f', summary.decision_threshold)
     logger.info(
         'Test PR-AUC %.4f, precision %.4f, recall %.4f',

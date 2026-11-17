@@ -29,7 +29,7 @@ def main() -> None:
     configure_logging()
     output_path = arguments.output_path or load_config(arguments.config_path).data.sample_path
 
-    logger.info('Generating %d synthetic transactions', arguments.n_rows)
+    logger.info('Generating %s synthetic transactions', f'{arguments.n_rows:,}')
     frame = generate_synthetic_transactions(
         n_rows=arguments.n_rows,
         fraud_rate=arguments.fraud_rate,
