@@ -33,6 +33,7 @@ dev = [
     'mypy',
     'pandas-stubs',
     'pre-commit',
+    'pre-commit-hooks',
     'pytest',
     'pytest-cov',
     'ruff',

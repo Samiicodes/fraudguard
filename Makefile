@@ -1,5 +1,6 @@
 # Development tasks. Every target runs through uv, so no virtual environment
-# needs to be activated first.
+# needs to be activated first. Python tools start with python -m instead of their
+# .exe launchers, which Windows application control policies can block.
 
 UV ?= uv
 IMAGE ?= fraudguard:latest
@@ -22,19 +23,19 @@ help:
 
 install:
 	$(UV) sync --frozen
-	$(UV) run pre-commit install
+	$(UV) run python -m pre_commit install
 
 lint:
 	$(UV) run ruff check .
 	$(UV) run ruff format --check .
-	$(UV) run mypy
+	$(UV) run python -m mypy
 
 format:
 	$(UV) run ruff check --fix .
 	$(UV) run ruff format .
 
 test:
-	$(UV) run pytest --cov --cov-report=term-missing
+	$(UV) run python -m pytest --cov --cov-report=term-missing
 
 sample-data:
 	$(UV) run python scripts/generate_sample_data.py
@@ -49,7 +50,7 @@ serve:
 	$(UV) run python scripts/run_api.py
 
 mlflow-ui:
-	$(UV) run mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5000
+	$(UV) run python -m mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5000
 
 docker-build:
 	docker build --tag $(IMAGE) .
