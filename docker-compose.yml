@@ -1,0 +1,74 @@
+# Local stack: an MLflow tracking server, a one-off training job on synthetic data,
+# and the API serving the registered champion. Start it with: docker compose up --build
+
+x-fraudguard-image: &fraudguard-image
+  build: .
+  image: fraudguard:latest
+
+services:
+  mlflow:
+    <<: *fraudguard-image
+    command: >-
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --workers 1
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts
+      --allowed-hosts mlflow:5000,localhost:*,127.0.0.1:*
+    ports:
+      - '5000:5000'
+    volumes:
+      - mlflow-store:/mlflow
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health')
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  train:
+    <<: *fraudguard-image
+    command: >-
+      sh -c 'python scripts/generate_sample_data.py
+      && python scripts/train_model.py --use_sample_data'
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    volumes:
+      - ./data:/app/data
+      - ./reports:/app/reports
+    depends_on:
+      mlflow:
+        condition: service_healthy
+
+  api:
+    <<: *fraudguard-image
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    ports:
+      - '8000:8000'
+    volumes:
+      - prediction-logs:/app/data/monitoring
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    depends_on:
+      mlflow:
+        condition: service_healthy
+      train:
+        condition: service_completed_successfully
+
+volumes:
+  mlflow-store:
+  prediction-logs:
