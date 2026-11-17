@@ -703,6 +703,7 @@ def _write_result_files(data: ReportData, champion: CandidateResult, output_dir:
             'name': data.champion_name,
             'model_version': data.model_version,
             'decision_threshold': data.selection.threshold,
+            'review_budget_met': data.selection.budget_met,
         },
         'validation': {**champion.ranking, **champion.at_threshold.to_dict()},
         'test': {
