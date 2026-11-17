@@ -63,26 +63,32 @@ class ShapExplainer:
             if isinstance(classifier, RandomForestClassifier):
                 self.output_unit = 'probability'
 
-    @property
-    def base_value(self) -> float:
-        '''Model output expected before any feature is taken into account.'''
-        # Classifiers with one output per class report one base value per class
-        return float(np.ravel(self._explainer.expected_value)[-1])
+    def explain(self, features: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+        '''Return SHAP values of shape (rows, features) and base values of shape (rows,).
+
+        Both come from the same call, so for every row the base value plus the sum of
+        its SHAP values equals the raw model output. The explainer's expected_value
+        attribute is not used: for tree models SHAP replaces it during computation.
+        '''
+        result = self._explainer(features[self.feature_names])
+        values, base_values = np.asarray(result.values), np.asarray(result.base_values)
+        # Classifiers with one output per class keep the fraud class only
+        if values.ndim == 3:
+            values, base_values = values[:, :, 1], base_values[:, 1]
+        return values, base_values
 
     def shap_values(self, features: pd.DataFrame) -> np.ndarray:
-        '''Return an array of shape (rows, features) for the fraud class.'''
-        values = np.asarray(self._explainer.shap_values(features[self.feature_names]))
-        if values.ndim == 3:
-            values = values[:, :, 1]
-        return values
+        '''Return SHAP values of shape (rows, features) for the fraud class.'''
+        return self.explain(features)[0]
 
     def explain_row(self, features: pd.DataFrame, top_k: int) -> Explanation:
         '''Explain the first row of features with its top_k largest contributions.'''
         row = features[self.feature_names].iloc[[0]]
-        contributions = self.shap_values(row)[0]
+        values, base_values = self.explain(row)
+        contributions = values[0]
         largest = np.argsort(-np.abs(contributions))[:top_k]
         return Explanation(
-            base_value=self.base_value,
+            base_value=float(base_values[0]),
             output_unit=self.output_unit,
             contributions=tuple(
                 FeatureContribution(
