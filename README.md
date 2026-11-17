@@ -206,6 +206,8 @@ To browse runs, metrics, figures, and registered versions:
 make mlflow-ui   # http://127.0.0.1:5000
 ```
 
+The exploratory analysis behind the feature choices is in `notebooks/exploratory_analysis.ipynb`. `make notebook` installs the optional notebook dependencies and opens it in JupyterLab.
+
 ### Test and lint
 
 ```bash
