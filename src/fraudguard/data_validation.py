@@ -109,7 +109,9 @@ def check_missing_values(frame: pd.DataFrame, max_missing_fraction: float) -> Ch
 
     affected_rows = int(frame[INPUT_COLUMNS].isna().any(axis=1).sum())
     if affected_rows:
-        message = f'{affected_rows} rows have missing inputs and will be imputed with train medians'
+        message = (
+            f'{affected_rows:,} rows have missing inputs and will be imputed with train medians'
+        )
         return CheckResult('missing_values', 'warning', message)
     return CheckResult('missing_values', 'passed', 'No missing input values')
 
@@ -119,7 +121,9 @@ def check_duplicates(frame: pd.DataFrame) -> CheckResult:
     duplicate_count = int(frame.duplicated(subset=REQUIRED_COLUMNS).sum())
     if duplicate_count:
         share = duplicate_count / len(frame)
-        message = f'{duplicate_count} duplicate rows ({share:.2%}) will be dropped before splitting'
+        message = (
+            f'{duplicate_count:,} duplicate rows ({share:.2%}) will be dropped before splitting'
+        )
         return CheckResult('duplicates', 'warning', message)
     return CheckResult('duplicates', 'passed', 'No duplicate rows')
 
@@ -141,9 +145,9 @@ def check_value_ranges(frame: pd.DataFrame, max_invalid_fraction: float) -> Chec
     share = invalid_count / len(frame)
     if share > max_invalid_fraction:
         limit = f'{max_invalid_fraction:.2%}'
-        message = f'{invalid_count} invalid rows ({share:.2%}), above the {limit} limit'
+        message = f'{invalid_count:,} invalid rows ({share:.2%}), above the {limit} limit'
         return CheckResult('value_ranges', 'failed', message)
-    return CheckResult('value_ranges', 'warning', f'{invalid_count} invalid rows will be dropped')
+    return CheckResult('value_ranges', 'warning', f'{invalid_count:,} invalid rows will be dropped')
 
 
 def check_class_balance(frame: pd.DataFrame, config: ValidationConfig) -> CheckResult:
@@ -151,10 +155,10 @@ def check_class_balance(frame: pd.DataFrame, config: ValidationConfig) -> CheckR
     fraud_count = int((frame[TARGET_COLUMN] == 1).sum())
     fraud_rate = fraud_count / len(frame)
     if fraud_count < config.min_fraud_rows:
-        message = f'Only {fraud_count} fraud rows, at least {config.min_fraud_rows} are required'
+        message = f'Only {fraud_count:,} fraud rows, at least {config.min_fraud_rows} are required'
         return CheckResult('class_balance', 'failed', message)
 
-    summary = f'{fraud_count} fraud rows ({fraud_rate:.3%})'
+    summary = f'{fraud_count:,} fraud rows ({fraud_rate:.3%})'
     if not config.min_fraud_rate <= fraud_rate <= config.max_fraud_rate:
         expected = f'{config.min_fraud_rate:.2%} to {config.max_fraud_rate:.0%}'
         return CheckResult(

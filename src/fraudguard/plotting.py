@@ -157,8 +157,10 @@ def plot_precision_recall_comparison(
             axes.step(recall, precision, where='post', color=BLUE)
             pr_auc = average_precision_score(target, scores_by_model[name])
             axes.set(title=f'{name}\nPR-AUC {pr_auc:.3f}', xlim=(0, 1), ylim=(0, 1.02))
-        for unused in panels[len(curves) :]:
-            unused.set_visible(False)
+        for position in range(len(curves), len(panels)):
+            panels[position].set_visible(False)
+            # The panel above a hidden one is now the bottom of its column
+            panels[position - column_count].xaxis.set_tick_params(labelbottom=True)
         figure.supxlabel('Recall', color=INK_SECONDARY, fontsize=10)
         figure.supylabel('Precision', color=INK_SECONDARY, fontsize=10)
     return path
