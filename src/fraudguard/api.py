@@ -10,6 +10,7 @@ from typing import Annotated, Any, Literal
 
 import pandas as pd
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -203,6 +204,19 @@ def metrics(request: Request) -> dict[str, Any]:
     }
 
 
+async def validation_error_handler(request: Request, error: RequestValidationError) -> JSONResponse:
+    '''Return field-level validation errors without echoing the submitted values.'''
+    # The default handler echoes each input value, which cannot be serialised when it is NaN
+    detail = [
+        {'loc': list(item['loc']), 'msg': item['msg'], 'type': item['type']}
+        for item in error.errors()
+    ]
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        content={'detail': detail, 'request_id': request.state.request_id},
+    )
+
+
 async def log_requests(
     request: Request, call_next: Callable[[Request], Awaitable[Response]]
 ) -> Response:
@@ -260,6 +274,7 @@ def create_app(
         lifespan=lifespan,
     )
     app.middleware('http')(log_requests)
+    app.exception_handler(RequestValidationError)(validation_error_handler)
     app.include_router(router)
     return app
 
