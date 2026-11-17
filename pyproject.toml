@@ -29,7 +29,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    'httpx',
+    'httpx2',
     'mypy',
     'pandas-stubs',
     'pre-commit',
@@ -117,6 +117,9 @@ testpaths = ['tests']
 addopts = ['--strict-markers', '--strict-config']
 filterwarnings = [
     'error::pytest.PytestUnraisableExceptionWarning',
+    # Deprecations inside third-party packages that this project cannot act on
+    'ignore::PendingDeprecationWarning:shap',
+    'ignore:The ``noload`` loader strategy is deprecated',
 ]
 
 [tool.coverage.run]
@@ -126,3 +129,4 @@ branch = true
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
+fail_under = 90
