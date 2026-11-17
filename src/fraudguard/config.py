@@ -17,7 +17,14 @@ CLI_LOG_FORMAT = '%(message)s'
 SERVICE_LOG_FORMAT = '%(asctime)s %(levelname)s %(name)s %(message)s'
 
 # Third-party loggers that print progress lines unrelated to the pipeline stages
-_NOISY_LOGGERS = ('alembic', 'mlflow', 'httpx', 'matplotlib')
+_NOISY_LOGGERS = ('alembic', 'httpx', 'matplotlib', 'mlflow')
+# MLflow warns about optional tools that containers usually lack: git for commit
+# tags, and pip or uv for inferring requirements. None of them affect the results.
+_OPTIONAL_TOOL_LOGGERS = (
+    'mlflow.utils.environment',
+    'mlflow.utils.git_utils',
+    'mlflow.utils.uv_utils',
+)
 
 
 class StrictModel(BaseModel):
@@ -244,5 +251,5 @@ def configure_logging(level: str = 'INFO', log_format: str = CLI_LOG_FORMAT) -> 
     logging.basicConfig(level=level.upper(), format=log_format, force=True)
     for name in _NOISY_LOGGERS:
         logging.getLogger(name).setLevel(logging.WARNING)
-    # uv environments ship without pip, which MLflow warns about on every model save
-    logging.getLogger('mlflow.utils.environment').setLevel(logging.ERROR)
+    for name in _OPTIONAL_TOOL_LOGGERS:
+        logging.getLogger(name).setLevel(logging.ERROR)
