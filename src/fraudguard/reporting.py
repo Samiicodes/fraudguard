@@ -113,6 +113,10 @@ class ReportData:
         '''Return the summary of the named split.'''
         return next(split for split in self.splits if split.name == name)
 
+    def candidate(self, name: str) -> CandidateSummary:
+        '''Return the validation results of the named candidate.'''
+        return next(candidate for candidate in self.candidates if candidate.name == name)
+
 
 def format_score(value: float) -> str:
     '''Format a model score so that very small scores do not print as zero.'''
@@ -383,6 +387,7 @@ def _test_section(data: ReportData) -> str:
             f'The test split holds {fraud_rows} fraud cases, so a single case moves recall by '
             f'{1 / fraud_rows:.1%}. The intervals are wide for that reason, and small '
             'differences between models or thresholds should not be read as real.',
+            _validation_comparison(data),
             'The same test scores at other operating points, for comparison only:',
             _table(
                 ['Operating point', 'Threshold', 'Precision', 'Recall', 'FPR', 'Cost per 10k'],
@@ -392,6 +397,29 @@ def _test_section(data: ReportData) -> str:
             _figure('ROC curve on the test split', 'roc_curve'),
             _figure('Confusion matrix on the test split', 'confusion_matrix'),
         ]
+    )
+
+
+def _validation_comparison(data: ReportData) -> str:
+    '''Set the test results against the validation results of the same model.'''
+    validation = data.candidate(data.champion_name)
+    text = (
+        f'On the validation split the champion reached PR-AUC {validation.pr_auc:.3f}, '
+        f'precision {validation.at_threshold.precision:.3f}, and recall '
+        f'{validation.at_threshold.recall:.3f} at the same threshold.'
+    )
+    if 'pr_auc' not in data.test_intervals:
+        return text
+    low, high = data.test_intervals['pr_auc']
+    if low <= validation.pr_auc <= high:
+        return (
+            f'{text} The validation PR-AUC lies inside the test interval, so the difference '
+            'between the splits is within sampling noise. Expect new data to land somewhere in '
+            'that range rather than at either point estimate.'
+        )
+    return (
+        f'{text} The validation PR-AUC lies outside the test interval, which needs a closer '
+        'look before either number is trusted.'
     )
 
 
