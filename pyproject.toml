@@ -52,6 +52,8 @@ build-backend = 'hatchling.build'
 packages = ['src/fraudguard']
 
 [tool.uv]
+# Older uv releases do not understand exclude-dependencies
+required-version = '>=0.13'
 # Resolve against a fixed date so that relocking gives the same versions
 exclude-newer = '2026-10-01T00:00:00Z'
 # XGBoost pulls in NCCL (over 300 MB) on Linux; it is only used for multi-GPU training
