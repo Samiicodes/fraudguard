@@ -263,8 +263,24 @@ def _comparison_section(data: ReportData) -> str:
             'PR-AUC is the selection metric because it measures ranking quality on the fraud '
             'class across all thresholds. ROC-AUC is reported as well, but it is inflated by '
             'the large number of easy legitimate transactions.',
+            _cost_spread_note(data),
             _figure('Precision-recall curves on the validation split', 'pr_comparison'),
         ]
+    )
+
+
+def _cost_spread_note(data: ReportData) -> str:
+    '''Explain why cost at one threshold is not used to rank the candidates.'''
+    costs = [candidate.at_threshold.cost_per_10k for candidate in data.candidates]
+    # What one extra missed fraud adds to the cost per 10,000 validation transactions
+    one_case = data.threshold_config.false_negative_cost / data.split('validation').rows * 10_000
+    spread = max(costs) - min(costs)
+    return (
+        f'Expected cost at the threshold chosen for each candidate ranges from {min(costs):,.0f} '
+        f'to {max(costs):,.0f} per 10,000 transactions. One more missed fraud adds {one_case:.0f} '
+        f'on this split, so the whole spread equals about {spread / one_case:.1f} fraud cases. '
+        'A ranking that depends on so few cases would mostly reflect noise, which is why '
+        'candidates are compared on PR-AUC and cost is used only to set the threshold.'
     )
 
 
