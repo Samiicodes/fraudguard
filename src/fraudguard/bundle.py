@@ -80,6 +80,10 @@ def export_champion(config: MlflowConfig, bundle_dir: Path) -> BundleManifest:
             dst_path=download_dir,
         )
         shutil.copytree(local_path, model_dir)
+    # The download directory is private to this user (mode 0700) and copytree keeps that mode,
+    # but images run the service as another user, so the bundle must be readable by everyone
+    for path in [model_dir, *model_dir.rglob('*')]:
+        path.chmod(0o755 if path.is_dir() else 0o644)
     # MLflow records the absolute artefact path on the exporting machine. A bundle is loaded
     # from wherever it is copied to, so only its own relative location is kept.
     descriptor_path = model_dir / MLMODEL_FILE_NAME

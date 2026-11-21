@@ -218,7 +218,7 @@ make test   # pytest with coverage, fails below 90%
 make lint   # ruff and mypy in strict mode
 ```
 
-The 103 tests cover 97% of the package. One fixture trains the whole pipeline on synthetic data in a temporary MLflow store, so the suite needs neither the real dataset nor network access.
+The 104 tests cover 97% of the package. One fixture trains the whole pipeline on synthetic data in a temporary MLflow store, so the suite needs neither the real dataset nor network access.
 
 ### Serve
 

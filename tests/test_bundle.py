@@ -1,6 +1,7 @@
 '''Tests for exporting the champion to a bundle and serving the API from it.'''
 
 import logging
+import stat
 from pathlib import Path
 from typing import cast
 
@@ -123,6 +124,15 @@ def test_bundle_does_not_record_paths_from_the_exporting_machine(
 
     assert Model.load(bundle_dir / MODEL_DIR).artifact_path == MODEL_DIR
     assert config.mlflow.artifact_dir.as_posix() not in descriptor
+
+
+def test_bundle_is_readable_by_other_users(bundle_dir: Path) -> None:
+    # Containers run the service as a different user from the one that exported the bundle.
+    # The bundle directory itself comes from pytest, which makes it private, so only its
+    # contents are checked.
+    unreadable = [path for path in bundle_dir.rglob('*') if not path.stat().st_mode & stat.S_IROTH]
+
+    assert unreadable == []
 
 
 def test_export_does_not_overwrite_a_bundle(
