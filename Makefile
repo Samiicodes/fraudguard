@@ -5,7 +5,7 @@
 UV ?= uv
 IMAGE ?= fraudguard:latest
 
-.PHONY: help install lint format test sample-data train train-sample serve mlflow-ui notebook docker-build docker-up docker-down
+.PHONY: help install lint format test sample-data train train-sample serve mlflow-ui notebook bundle deploy docker-build docker-up docker-down
 
 help:
 	@echo install       Install dependencies and the pre-commit hooks
@@ -18,6 +18,8 @@ help:
 	@echo serve         Start the API on http://127.0.0.1:8000
 	@echo mlflow-ui     Browse runs and registered models on http://127.0.0.1:5000
 	@echo notebook      Open the exploratory analysis in JupyterLab
+	@echo bundle        Export the champion and demo transactions to dist/model_bundle
+	@echo deploy        Deploy the bundle and the API to Google Cloud Run
 	@echo docker-build  Build the Docker image
 	@echo docker-up     Start MLflow, a sample training job, and the API with Docker Compose
 	@echo docker-down   Stop the Docker Compose stack
@@ -55,6 +57,12 @@ mlflow-ui:
 
 notebook:
 	$(UV) run --group notebook python -m jupyterlab notebooks/exploratory_analysis.ipynb
+
+bundle:
+	$(UV) run python scripts/export_model.py
+
+deploy:
+	$(UV) run python scripts/deploy_cloud_run.py
 
 docker-build:
 	docker build --tag $(IMAGE) .

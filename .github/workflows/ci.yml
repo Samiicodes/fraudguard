@@ -94,3 +94,44 @@ jobs:
       - name: Show container logs
         if: always()
         run: docker logs fraudguard
+
+  cloud-run:
+    name: Build and smoke test the Cloud Run image
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: '0.13.8'
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Train on synthetic data and stage the Cloud Run build
+        run: |
+          uv run python scripts/generate_sample_data.py --n_rows 20000
+          uv run python scripts/train_model.py --use_sample_data
+          uv run python scripts/export_model.py --use_sample_data
+          uv run python scripts/deploy_cloud_run.py --stage_only
+
+      - name: Build the Cloud Run image
+        run: docker build --tag fraudguard-cloud-run:ci dist/cloud_run
+
+      - name: Serve the bundle without a registry
+        run: |
+          docker run --detach --name fraudguard-cloud-run --publish 8080:8080 fraudguard-cloud-run:ci
+          curl --fail --silent --show-error --retry 30 --retry-delay 2 --retry-all-errors \
+            http://localhost:8080/health
+
+      - name: Check the demo page and its examples
+        run: |
+          curl --fail --silent --show-error http://localhost:8080/ | grep --quiet 'demo/examples'
+          curl --fail --silent --show-error http://localhost:8080/demo/examples \
+            | python3 -c 'import json, sys; assert json.load(sys.stdin)["examples"]'
+
+      - name: Show container logs
+        if: always()
+        run: docker logs fraudguard-cloud-run
