@@ -6,25 +6,30 @@ import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from dataclasses import asdict
+from importlib import resources
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import pandas as pd
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from fraudguard import __version__
-from fraudguard.config import AppConfig, MlflowConfig, load_config
+from fraudguard.bundle import load_model_bundle, read_demo_examples, read_manifest
+from fraudguard.config import AppConfig, load_config
 from fraudguard.inference import FraudModel, load_champion_model
 from fraudguard.monitoring import PredictionMonitor
 
 logger = logging.getLogger(__name__)
 
-ModelLoader = Callable[[MlflowConfig], FraudModel]
+ModelLoader = Callable[[AppConfig], FraudModel]
 
 # Client-supplied request ids are echoed into logs, so only plain tokens are accepted
 _REQUEST_ID_PATTERN = re.compile(r'[A-Za-z0-9._-]{1,64}')
+_DEMO_PAGE = resources.files('fraudguard').joinpath('demo.html').read_text(encoding='utf-8')
 
 # First row of creditcard.csv, a legitimate transaction
 _EXAMPLE_TRANSACTION: dict[str, Any] = {
@@ -122,6 +127,24 @@ class HealthResponse(BaseModel):
     service_version: str
 
 
+class DemoExampleResponse(BaseModel):
+    '''A transaction from the held-out test split, with its true label.'''
+
+    group: str
+    actual_label: Literal['fraud', 'legitimate']
+    transaction: TransactionRequest
+
+
+class DemoResponse(BaseModel):
+    '''Content for the demo page.'''
+
+    algorithm: str | None
+    test_metrics: dict[str, float] = Field(
+        description='Metrics of the served model on the test split, at its decision threshold.'
+    )
+    examples: list[DemoExampleResponse]
+
+
 router = APIRouter()
 
 
@@ -191,6 +214,23 @@ def predict(
     )
 
 
+@router.get('/', include_in_schema=False)
+def demo_page() -> HTMLResponse:
+    '''Serve the demo page, which scores test transactions through /predict.'''
+    return HTMLResponse(_DEMO_PAGE)
+
+
+@router.get('/demo/examples', response_model=DemoResponse)
+def demo_examples(request: Request) -> DemoResponse:
+    '''Return the test transactions and metrics for the demo page.
+
+    Both come from the model bundle, so the list is empty when the service loads its model
+    from the registry.
+    '''
+    demo: DemoResponse = request.app.state.demo
+    return demo
+
+
 @router.get('/metrics')
 def metrics(request: Request) -> dict[str, Any]:
     '''Return prediction counts, latency, input statistics, and drift status.'''
@@ -246,22 +286,30 @@ async def log_requests(
     return response
 
 
+def load_configured_model(config: AppConfig) -> FraudModel:
+    '''Load the model bundle when api.model_bundle is set, otherwise the registry champion.'''
+    if config.api.model_bundle is not None:
+        return load_model_bundle(config.api.model_bundle)
+    return load_champion_model(config.mlflow)
+
+
 def create_app(
-    config: AppConfig | None = None, model_loader: ModelLoader = load_champion_model
+    config: AppConfig | None = None, model_loader: ModelLoader = load_configured_model
 ) -> FastAPI:
     '''Build the application.
 
     Args:
         config: Project configuration. Read from the default location when omitted.
-        model_loader: Returns the model to serve. Tests replace the registry loader.
+        model_loader: Returns the model to serve. Tests replace the default loader.
     '''
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app_config = config or load_config()
-        model = _load_model(app_config.mlflow, model_loader)
+        model = _load_model(app_config, model_loader)
         app.state.config = app_config
         app.state.model = model
+        app.state.demo = _load_demo(app_config.api.model_bundle if model else None)
         app.state.monitor = PredictionMonitor(
             app_config.monitoring, model.reference_profile if model else None
         )
@@ -279,17 +327,20 @@ def create_app(
     return app
 
 
-def _load_model(config: MlflowConfig, model_loader: ModelLoader) -> FraudModel | None:
+def _load_model(config: AppConfig, model_loader: ModelLoader) -> FraudModel | None:
     '''Load the model, or log the failure and return None so /health can report it.'''
     try:
         model = model_loader(config)
     except Exception:
-        logger.exception(
-            'Could not load model %s with alias %s from %s',
-            config.registered_model_name,
-            config.champion_alias,
-            config.tracking_uri,
-        )
+        if config.api.model_bundle is not None:
+            logger.exception('Could not load the model bundle at %s', config.api.model_bundle)
+        else:
+            logger.exception(
+                'Could not load model %s with alias %s from %s',
+                config.mlflow.registered_model_name,
+                config.mlflow.champion_alias,
+                config.mlflow.tracking_uri,
+            )
         return None
     logger.info(
         'Loaded model %s version %s with decision threshold %.3f',
@@ -298,3 +349,17 @@ def _load_model(config: MlflowConfig, model_loader: ModelLoader) -> FraudModel |
         model.decision_threshold,
     )
     return model
+
+
+def _load_demo(bundle_dir: Path | None) -> DemoResponse:
+    '''Read the demo page content from the bundle the model was loaded from, if any.'''
+    if bundle_dir is None:
+        return DemoResponse(algorithm=None, test_metrics={}, examples=[])
+    manifest = read_manifest(bundle_dir)
+    return DemoResponse.model_validate(
+        {
+            'algorithm': manifest.algorithm,
+            'test_metrics': manifest.test_metrics,
+            'examples': [asdict(example) for example in read_demo_examples(bundle_dir)],
+        }
+    )

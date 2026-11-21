@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>fraudguard demo</title>
+<meta name="description" content="Live demo of a credit card fraud detection model: score held-out test transactions and see why the model decided as it did.">
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #6f6d68;
+    --border: rgba(11, 11, 11, 0.10);
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --toward-fraud: #e34948;
+    --toward-legit: #2a78d6;
+    --flagged: #d03b3b;
+    --approved: #0ca30c;
+    --link: #1f63b5;
+    --wash: rgba(42, 120, 214, 0.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --ink: #f0efec;
+      --ink-2: #c3c2b7;
+      --muted: #9a988f;
+      --border: rgba(255, 255, 255, 0.10);
+      --grid: #2c2c2a;
+      --axis: #383835;
+      --toward-fraud: #e66767;
+      --toward-legit: #3987e5;
+      --flagged: #e05252;
+      --approved: #0ca30c;
+      --link: #6aa8f0;
+      --wash: rgba(57, 135, 229, 0.14);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  }
+  a { color: var(--link); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+  header { padding: 40px 0 24px; }
+  .eyebrow { margin: 0 0 4px; color: var(--muted); font-size: 14px; letter-spacing: 0.04em; text-transform: uppercase; }
+  h1 { margin: 0; font-size: 32px; line-height: 1.2; }
+  .lede { max-width: 720px; margin: 12px 0 16px; color: var(--ink-2); font-size: 18px; }
+  .links { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 15px; }
+  h2 { margin: 0 0 12px; font-size: 18px; }
+  .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 8px 0 28px; }
+  .tile, .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+  .tile { padding: 14px 16px; }
+  .tile .label { color: var(--ink-2); font-size: 14px; }
+  .tile .value { font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tile .note { color: var(--muted); font-size: 13px; }
+  .layout { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 20px; align-items: start; }
+  .panel { padding: 18px; }
+  .group { margin: 0 0 14px; }
+  .group:last-child { margin-bottom: 0; }
+  .group h3 { margin: 0 0 6px; color: var(--ink-2); font-size: 14px; font-weight: 600; }
+  .example {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    width: 100%; margin: 0 0 6px; padding: 10px 12px;
+    background: transparent; color: var(--ink); font: inherit; font-size: 15px; text-align: left;
+    border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+  }
+  .example:hover { background: var(--wash); }
+  .example:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+  .example[aria-pressed='true'] { border-color: var(--link); background: var(--wash); }
+  .example .amount { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .example .when { color: var(--muted); font-size: 14px; }
+  .placeholder { margin: 0; color: var(--muted); }
+  .verdict { display: flex; align-items: center; gap: 10px; margin: 0 0 4px; font-size: 22px; font-weight: 600; }
+  .verdict svg { flex: none; }
+  .truth { margin: 0 0 16px; color: var(--ink-2); }
+  .meter { position: relative; height: 10px; margin: 28px 0 6px; background: var(--grid); border-radius: 5px; }
+  .meter .fill { position: absolute; inset: 0 auto 0 0; min-width: 3px; border-radius: 5px; }
+  .meter .tick { position: absolute; top: -6px; bottom: -6px; width: 2px; background: var(--ink); }
+  .meter .tick span { position: absolute; bottom: 26px; transform: translateX(-50%); white-space: nowrap; color: var(--ink-2); font-size: 13px; }
+  .scale { display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; }
+  .score-line { margin: 10px 0 20px; font-variant-numeric: tabular-nums; }
+  .why h3 { margin: 0 0 2px; font-size: 16px; }
+  .why .sub { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 10px; color: var(--ink-2); font-size: 13px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 2px; vertical-align: -1px; }
+  .bars { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; gap: 6px 10px; align-items: center; font-size: 14px; }
+  .bars .name { color: var(--ink); }
+  .bars .num { color: var(--ink-2); font-variant-numeric: tabular-nums; text-align: right; }
+  .track { position: relative; height: 14px; }
+  .track::before { content: ''; position: absolute; top: -3px; bottom: -3px; left: 50%; width: 1px; background: var(--axis); }
+  .bar { position: absolute; top: 0; bottom: 0; }
+  .bar.up { left: 50%; background: var(--toward-fraud); border-radius: 0 4px 4px 0; }
+  .bar.down { right: 50%; background: var(--toward-legit); border-radius: 4px 0 0 4px; }
+  .meta { margin: 18px 0 0; color: var(--muted); font-size: 13px; }
+  details { margin-top: 14px; font-size: 14px; }
+  summary { cursor: pointer; color: var(--ink-2); }
+  pre {
+    overflow-x: auto; margin: 8px 0 0; padding: 12px;
+    background: var(--page); border: 1px solid var(--border); border-radius: 8px;
+    font: 12px/1.45 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  }
+  .notes { margin: 32px 0 0; }
+  .notes ul { margin: 0; padding-left: 20px; color: var(--ink-2); }
+  .notes li { margin: 0 0 6px; }
+  footer { margin: 32px 0 0; padding: 20px 0 32px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; }
+  .error { color: var(--flagged); }
+  @media (max-width: 760px) {
+    header { padding-top: 24px; }
+    h1 { font-size: 26px; }
+    .lede { font-size: 16px; }
+    .stats, .layout { grid-template-columns: minmax(0, 1fr); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <p class="eyebrow">Live demo</p>
+    <h1>fraudguard</h1>
+    <p class="lede">A fraud detection model for card payments, trained on a public dataset of 284,807 European card transactions and served from a FastAPI container. Pick a payment from the test set, which played no part in training or model selection, to see the decision and the features behind it.</p>
+    <nav class="links" aria-label="Project links">
+      <a href="docs">API documentation</a>
+      <a href="https://github.com/Samiicodes/fraudguard">Source code</a>
+      <a href="https://github.com/Samiicodes/fraudguard/blob/main/docs/model_card.md">Model card</a>
+      <a href="https://github.com/Samiicodes/fraudguard/blob/main/docs/evaluation_report.md">Evaluation report</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <section id="stats" class="stats" aria-label="Test set results" hidden></section>
+
+  <div class="layout">
+    <section class="panel" aria-labelledby="pick-heading">
+      <h2 id="pick-heading">Pick a test transaction</h2>
+      <div id="examples"><p class="placeholder">Loading transactions...</p></div>
+    </section>
+
+    <section class="panel" aria-labelledby="result-heading">
+      <h2 id="result-heading">The model's decision</h2>
+      <div id="result" aria-live="polite"><p class="placeholder">Choose a transaction on the left. It is sent to the <code>/predict</code> endpoint, exactly as a payment system would send it.</p></div>
+    </section>
+  </div>
+
+  <section class="notes" aria-labelledby="notes-heading">
+    <h2 id="notes-heading">How it works</h2>
+    <ul>
+      <li>Five candidate models were compared on a validation split, and the best by PR-AUC was registered in MLflow. The test split was scored once, for the numbers above.</li>
+      <li>The decision threshold is not 0.5. It follows from stated costs for a missed fraud and a false alarm, with a cap on the false alarm rate, all set in the project configuration.</li>
+      <li>Each answer comes with SHAP contributions, computed by the service for that one payment.</li>
+      <li>V1 to V28 are anonymised principal components that the bank released instead of the raw card data, so they have no business meaning that can be read off.</li>
+      <li>The service validates every field, logs each prediction, and compares recent inputs with the training data for drift, reported at <a href="metrics">/metrics</a>.</li>
+      <li>It runs on Google Cloud Run, which stops the container when nobody is using it. If this page was slow to open, a new container was starting.</li>
+    </ul>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    Data: <a href="https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud">Credit Card Fraud Detection</a>, Machine Learning Group, Universit&eacute; Libre de Bruxelles, under the Open Database License. The transactions on this page are rows from its test split.
+  </div>
+</footer>
+
+<script>
+(() => {
+  'use strict';
+
+  const examplesBox = document.getElementById('examples');
+  const resultBox = document.getElementById('result');
+  const statsBox = document.getElementById('stats');
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  let modelInfo = null;
+
+  function el(tag, attributes = {}, ...children) {
+    const node = document.createElement(tag);
+    for (const [name, value] of Object.entries(attributes)) {
+      if (name === 'text') node.textContent = value;
+      else node.setAttribute(name, value);
+    }
+    node.append(...children);
+    return node;
+  }
+
+  function integer(value) {
+    return Math.round(value).toLocaleString('en-GB');
+  }
+
+  function percent(value) {
+    return `${(value * 100).toFixed(1)}%`;
+  }
+
+  function money(value) {
+    return value.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function score(value) {
+    if (value < 0.0001) return 'below 0.0001';
+    return value < 0.01 ? value.toFixed(4) : value.toFixed(3);
+  }
+
+  function signed(value) {
+    return `${value >= 0 ? '+' : '−'}${Math.abs(value).toFixed(2)}`;
+  }
+
+  function featureName(feature) {
+    const names = {
+      amount_log: 'Amount',
+      amount_bucket: 'Amount band',
+      hour_sin: 'Hour of day (sine)',
+      hour_cos: 'Hour of day (cosine)',
+    };
+    return names[feature] || feature.toUpperCase();
+  }
+
+  function timeOfDay(seconds) {
+    const day = Math.floor(seconds / 86400) + 1;
+    const minutes = Math.floor((seconds % 86400) / 60);
+    const clock = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+    return `${clock} on day ${day}`;
+  }
+
+  function icon(flagged) {
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('width', '24');
+    svg.setAttribute('height', '24');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    const circle = document.createElementNS(SVG_NS, 'circle');
+    circle.setAttribute('cx', '12');
+    circle.setAttribute('cy', '12');
+    circle.setAttribute('r', '11');
+    circle.setAttribute('fill', flagged ? 'var(--flagged)' : 'var(--approved)');
+    const mark = document.createElementNS(SVG_NS, 'path');
+    mark.setAttribute('d', flagged ? 'M12 6.5v7M12 16.5v.5' : 'M7 12.5l3.2 3.2L17 8.8');
+    mark.setAttribute('stroke', '#ffffff');
+    mark.setAttribute('stroke-width', '2.4');
+    mark.setAttribute('stroke-linecap', 'round');
+    mark.setAttribute('stroke-linejoin', 'round');
+    mark.setAttribute('fill', 'none');
+    svg.append(circle, mark);
+    return svg;
+  }
+
+  function showStats(metrics) {
+    const needed = ['true_positives', 'false_negatives', 'false_positives', 'true_negatives', 'pr_auc'];
+    if (!needed.every((name) => name in metrics)) return;
+    const frauds = metrics.true_positives + metrics.false_negatives;
+    const legitimate = metrics.false_positives + metrics.true_negatives;
+    const tiles = [
+      ['Fraud caught on the test set', `${integer(metrics.true_positives)} of ${integer(frauds)}`, `${percent(metrics.true_positives / frauds)} recall`],
+      ['False alarms', integer(metrics.false_positives), `among ${integer(legitimate)} legitimate payments`],
+      ['PR-AUC', metrics.pr_auc.toFixed(3), `fraud is ${percent(frauds / (frauds + legitimate))} of payments, so a random model scores about that`],
+    ];
+    statsBox.replaceChildren(...tiles.map(([label, value, note]) => el('div', { class: 'tile' },
+      el('div', { class: 'label', text: label }),
+      el('div', { class: 'value', text: value }),
+      el('div', { class: 'note', text: note }),
+    )));
+    statsBox.hidden = false;
+  }
+
+  function showExamples(examples) {
+    if (examples.length === 0) {
+      examplesBox.replaceChildren(el('p', { class: 'placeholder' },
+        'This deployment has no bundled test transactions. Send your own through the ',
+        el('a', { href: 'docs', text: 'API documentation' }), '.'));
+      return;
+    }
+    const groups = new Map();
+    for (const example of examples) {
+      if (!groups.has(example.group)) groups.set(example.group, []);
+      groups.get(example.group).push(example);
+    }
+    const sections = [];
+    for (const [group, items] of groups) {
+      const buttons = items.map((example) => {
+        const button = el('button', { type: 'button', class: 'example', 'aria-pressed': 'false' },
+          el('span', { class: 'amount', text: `Amount ${money(example.transaction.amount)}` }),
+          el('span', { class: 'when', text: timeOfDay(example.transaction.time_seconds) }));
+        button.addEventListener('click', () => scoreExample(example, button));
+        return button;
+      });
+      sections.push(el('div', { class: 'group' }, el('h3', { text: group }), ...buttons));
+    }
+    examplesBox.replaceChildren(...sections);
+  }
+
+  async function scoreExample(example, button) {
+    for (const other of examplesBox.querySelectorAll('.example')) other.setAttribute('aria-pressed', 'false');
+    button.setAttribute('aria-pressed', 'true');
+    resultBox.replaceChildren(el('p', { class: 'placeholder', text: 'Scoring...' }));
+    try {
+      const response = await fetch('predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(example.transaction),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : `HTTP ${response.status}`);
+      showResult(example, body);
+    } catch (error) {
+      resultBox.replaceChildren(el('p', { class: 'error', text: `The request failed: ${error.message}` }));
+    }
+  }
+
+  function outcome(flagged, actual) {
+    if (actual === 'fraud') {
+      return flagged ? 'It really was fraud, so the model was right.' : 'It was actually fraud, so the model missed it.';
+    }
+    return flagged ? 'It was actually legitimate, so this is a false alarm.' : 'It really was legitimate, so the model was right.';
+  }
+
+  function showResult(example, body) {
+    const flagged = body.predicted_label === 'fraud';
+    const nodes = [
+      el('p', { class: 'verdict' }, icon(flagged), flagged ? 'Flagged as fraud' : 'Approved'),
+      el('p', { class: 'truth', text: outcome(flagged, example.actual_label) }),
+    ];
+
+    const fill = el('div', { class: 'fill' });
+    fill.style.width = `${body.fraud_probability * 100}%`;
+    fill.style.background = flagged ? 'var(--flagged)' : 'var(--approved)';
+    const tick = el('div', { class: 'tick' }, el('span', { text: `threshold ${body.decision_threshold.toFixed(3)}` }));
+    tick.style.left = `${body.decision_threshold * 100}%`;
+    nodes.push(
+      el('div', { class: 'meter', role: 'img', 'aria-label': `Fraud score ${score(body.fraud_probability)} against a threshold of ${body.decision_threshold.toFixed(3)}` }, fill, tick),
+      el('div', { class: 'scale' }, el('span', { text: '0' }), el('span', { text: '1' })),
+      el('p', { class: 'score-line' },
+        'Fraud score ', el('strong', { text: score(body.fraud_probability) }),
+        `. Payments scoring ${body.decision_threshold.toFixed(3)} or more are flagged.`),
+    );
+
+    if (body.explanation && body.explanation.contributions.length > 0) {
+      const contributions = body.explanation.contributions;
+      const largest = Math.max(...contributions.map((item) => Math.abs(item.contribution)));
+      const rows = [];
+      for (const item of contributions) {
+        const bar = el('div', { class: `bar ${item.contribution >= 0 ? 'up' : 'down'}` });
+        bar.style.width = `${(Math.abs(item.contribution) / largest) * 50}%`;
+        const direction = item.contribution >= 0 ? 'towards fraud' : 'towards legitimate';
+        rows.push(
+          el('span', { class: 'name', text: featureName(item.feature) }),
+          el('div', { class: 'track', title: `${featureName(item.feature)}: ${signed(item.contribution)} log-odds ${direction}` }, bar),
+          el('span', { class: 'num', text: signed(item.contribution) }),
+        );
+      }
+      nodes.push(el('div', { class: 'why' },
+        el('h3', { text: 'What drove the score' }),
+        el('p', { class: 'sub', text: `The ${contributions.length} largest SHAP contributions, in log-odds.` }),
+        el('div', { class: 'legend' },
+          el('span', {}, el('i', { style: 'background: var(--toward-fraud)' }), 'Pushes towards fraud'),
+          el('span', {}, el('i', { style: 'background: var(--toward-legit)' }), 'Pushes towards legitimate')),
+        el('div', { class: 'bars' }, ...rows),
+      ));
+    }
+
+    const algorithm = modelInfo && modelInfo.algorithm ? ` (${modelInfo.algorithm})` : '';
+    nodes.push(el('p', { class: 'meta',
+      text: `Model ${body.model_name} version ${body.model_version}${algorithm}. Scored in ${body.latency_ms.toFixed(1)} ms. Request ${body.request_id}.` }));
+
+    const curl = `curl -X POST ${new URL('predict', window.location.href)} \\\n  -H 'Content-Type: application/json' \\\n  -d '${JSON.stringify(example.transaction)}'`;
+    nodes.push(
+      el('details', {}, el('summary', { text: 'Request and response' }),
+        el('pre', { text: curl }),
+        el('pre', { text: JSON.stringify(body, null, 2) })),
+    );
+    resultBox.replaceChildren(...nodes);
+  }
+
+  async function load() {
+    try {
+      const response = await fetch('demo/examples');
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      modelInfo = await response.json();
+      showStats(modelInfo.test_metrics);
+      showExamples(modelInfo.examples);
+    } catch (error) {
+      examplesBox.replaceChildren(el('p', { class: 'error', text: `Could not load the test transactions: ${error.message}` }));
+    }
+  }
+
+  load();
+})();
+</script>
+</body>
+</html>

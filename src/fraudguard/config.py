@@ -156,6 +156,9 @@ class ApiConfig(StrictModel):
     host: str
     port: int = Field(ge=1, le=65535)
     explanation_top_k: int = Field(ge=1)
+    # A bundle written by scripts/export_model.py. When set, the service loads the model
+    # from it instead of the registry, which is how it runs away from this machine.
+    model_bundle: Path | None = None
 
 
 class MonitoringConfig(StrictModel):
@@ -200,6 +203,7 @@ class EnvironmentSettings(BaseSettings):
     mlflow_artifact_dir: Path | None = None
     api_host: str | None = None
     api_port: int | None = None
+    model_bundle: Path | None = None
     prediction_log_path: Path | None = None
 
     def overrides(self) -> dict[str, dict[str, Any]]:
@@ -209,7 +213,11 @@ class EnvironmentSettings(BaseSettings):
                 'tracking_uri': self.mlflow_tracking_uri,
                 'artifact_dir': self.mlflow_artifact_dir,
             },
-            'api': {'host': self.api_host, 'port': self.api_port},
+            'api': {
+                'host': self.api_host,
+                'port': self.api_port,
+                'model_bundle': self.model_bundle,
+            },
             'monitoring': {'prediction_log_path': self.prediction_log_path},
         }
         return {

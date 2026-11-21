@@ -21,7 +21,12 @@ CONFIG_PATH = Path(__file__).resolve().parents[1] / 'config' / 'config.yaml'
 @pytest.fixture
 def settings(monkeypatch: pytest.MonkeyPatch) -> EnvironmentSettings:
     '''Settings that ignore any local .env file and inherited overrides.'''
-    for name in ('MLFLOW_TRACKING_URI', 'FRAUDGUARD_API_HOST', 'FRAUDGUARD_API_PORT'):
+    for name in (
+        'MLFLOW_TRACKING_URI',
+        'FRAUDGUARD_API_HOST',
+        'FRAUDGUARD_API_PORT',
+        'FRAUDGUARD_MODEL_BUNDLE',
+    ):
         monkeypatch.delenv(name, raising=False)
     return EnvironmentSettings(_env_file=None)
 
@@ -33,16 +38,20 @@ def test_project_config_is_valid(settings: EnvironmentSettings) -> None:
     assert {'logistic_regression', 'random_forest', 'xgboost'} <= names
     assert config.training.selection_metric == 'pr_auc'
     assert config.mlflow.tracking_uri == 'sqlite:///mlflow.db'
+    # The service uses the registry unless a bundle is configured
+    assert config.api.model_bundle is None
 
 
 def test_environment_overrides_single_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv('MLFLOW_TRACKING_URI', 'http://mlflow:5000')
     monkeypatch.setenv('FRAUDGUARD_API_PORT', '9000')
+    monkeypatch.setenv('FRAUDGUARD_MODEL_BUNDLE', '/app/model_bundle')
 
     config = load_config(CONFIG_PATH, EnvironmentSettings(_env_file=None))
 
     assert config.mlflow.tracking_uri == 'http://mlflow:5000'
     assert config.api.port == 9000
+    assert config.api.model_bundle == Path('/app/model_bundle')
     # Settings that were not overridden keep their file values
     assert config.mlflow.experiment_name == 'fraudguard'
     assert config.api.host == '127.0.0.1'

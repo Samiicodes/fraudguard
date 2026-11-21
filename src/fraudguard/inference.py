@@ -93,11 +93,20 @@ def load_champion_model(config: MlflowConfig) -> FraudModel:
     local_path = mlflow.artifacts.download_artifacts(
         artifact_uri=f'models:/{config.registered_model_name}/{version.version}'
     )
+    return model_from_artifacts(local_path, config.registered_model_name, str(version.version))
+
+
+def model_from_artifacts(local_path: str, model_name: str, model_version: str) -> FraudModel:
+    '''Build a FraudModel from a downloaded MLflow model directory.
+
+    The decision threshold and drift reference profile come from the model metadata
+    written at registration time.
+    '''
     metadata = Model.load(local_path).metadata or {}
     return FraudModel(
         pipeline=mlflow.sklearn.load_model(local_path),
         decision_threshold=float(metadata['decision_threshold']),
-        model_name=config.registered_model_name,
-        model_version=str(version.version),
+        model_name=model_name,
+        model_version=model_version,
         reference_profile=metadata.get('reference_profile'),
     )

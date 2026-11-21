@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from fraudguard.api import create_app
-from fraudguard.config import AppConfig, MlflowConfig
+from fraudguard.config import AppConfig
 from fraudguard.data_ingestion import INPUT_COLUMNS
 from fraudguard.inference import FraudModel, FraudPrediction
 from fraudguard.training import TrainingSummary
@@ -41,7 +41,7 @@ class BrokenModel:
         raise RuntimeError('database password is hunter2')
 
 
-def unavailable_registry(config: MlflowConfig) -> FraudModel:
+def unavailable_registry(config: AppConfig) -> FraudModel:
     raise RuntimeError('registry unreachable')
 
 
