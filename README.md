@@ -2,7 +2,9 @@
 
 fraudguard detects fraudulent card transactions. It compares several models on the public credit card fraud dataset from Kaggle, picks a decision threshold from explicit business costs, registers the best model in MLflow, and serves it from a FastAPI service with input validation, per-prediction explanations, and drift monitoring.
 
-The repository is organised like a small production system: a typed Python package with tests, a reproducible training pipeline, experiment tracking and a model registry, a container image, and CI.
+The repository is organised like a small production system: a typed Python package with tests, a reproducible training pipeline, experiment tracking and a model registry, a container image, CI, and a live deployment.
+
+**Live demo: https://fraudguard-495192213241.europe-west1.run.app**. Pick a transaction from the held-out test set to see the decision and the features behind it, or call the API from its [documentation page](https://fraudguard-495192213241.europe-west1.run.app/docs). It runs on Google Cloud Run and scales to zero when idle, so the first request after a quiet spell takes about 20 seconds while a container starts.
 
 ![Precision, recall, false-positive rate, and expected cost across decision thresholds](docs/figures/threshold_analysis.png)
 
@@ -15,6 +17,7 @@ The repository is organised like a small production system: a typed Python packa
 - [Getting started](#getting-started)
 - [API](#api)
 - [Monitoring](#monitoring)
+- [Deployment](#deployment)
 - [Project structure](#project-structure)
 - [Limitations](#limitations)
 - [Future improvements](#future-improvements)
@@ -215,7 +218,7 @@ make test   # pytest with coverage, fails below 90%
 make lint   # ruff and mypy in strict mode
 ```
 
-The 92 tests cover 97% of the package. One fixture trains the whole pipeline on synthetic data in a temporary MLflow store, so the suite needs neither the real dataset nor network access.
+The 103 tests cover 97% of the package. One fixture trains the whole pipeline on synthetic data in a temporary MLflow store, so the suite needs neither the real dataset nor network access.
 
 ### Serve
 
@@ -223,7 +226,7 @@ The 92 tests cover 97% of the package. One fixture trains the whole pipeline on 
 make serve   # http://127.0.0.1:8000, interactive documentation at /docs
 ```
 
-The service loads the version behind the `champion` alias when it starts, so train first.
+The service loads the version behind the `champion` alias when it starts, so train first. With `FRAUDGUARD_MODEL_BUNDLE` set to a bundle from `make bundle`, it loads that instead and serves the demo page at `/`; see [Deployment](#deployment).
 
 ### Docker
 
@@ -248,6 +251,8 @@ docker compose restart api
 | `GET /health` | `200` with the model version, or `503` when no model is loaded |
 | `GET /metrics` | Prediction counts, flagged rate, latency, input statistics, and drift status |
 | `GET /docs` | Interactive OpenAPI documentation |
+| `GET /` | Demo page that scores test transactions through `/predict` |
+| `GET /demo/examples` | The demo transactions and test metrics, empty unless the model came from a bundle |
 
 A fraud case from the test split, with an amount of 1.00:
 
@@ -325,19 +330,33 @@ The API appends every prediction to `data/monitoring/predictions.jsonl`. `GET /m
 
 State is kept in memory, so it is per process and resets on restart. [docs/architecture.md](docs/architecture.md#extending-to-prometheus-and-grafana) describes how the same signals would move to Prometheus and Grafana.
 
+## Deployment
+
+The live demo runs on Google Cloud Run. The local MLflow registry cannot travel with the code, so `make bundle` exports the champion, its test metrics, and six test-split transactions into a self-contained bundle. `make deploy` then builds an image around it with Cloud Build and rolls out a new revision, labelled with the commit and model version.
+
+```bash
+make bundle
+make deploy
+```
+
+The service runs on 1 vCPU and 1 GiB and scales between zero and one instance, which keeps it inside the free tier and bounds the cost of any traffic spike. CI builds the same image from a model trained on synthetic data on every push. Deploying is a manual step, so no cloud credentials are stored in GitHub. [docs/deployment.md](docs/deployment.md) covers the one-off setup, the settings, and the limits.
+
 ## Project structure
 
 ```text
 fraudguard/
 ├── config/config.yaml          Data, model, threshold, and service settings
 ├── data/                       Raw, processed, and monitoring data, not committed
-├── docs/                       Architecture, feature dictionary, model card, evaluation report
+├── deploy/cloud_run/           Dockerfile for the Cloud Run demo
+├── docs/                       Architecture, deployment, features, model card, evaluation report
 ├── notebooks/                  Exploratory analysis of the dataset
 ├── reports/                    Output of the latest local training run, not committed
 ├── scripts/
 │   ├── generate_sample_data.py
 │   ├── train_model.py
-│   └── run_api.py
+│   ├── run_api.py
+│   ├── export_model.py         Champion and demo transactions to a model bundle
+│   └── deploy_cloud_run.py     Bundle and service to Google Cloud Run
 ├── src/fraudguard/
 │   ├── config.py               Typed settings and environment overrides
 │   ├── data_ingestion.py       Loading, schema mapping, splits, synthetic data
@@ -349,10 +368,12 @@ fraudguard/
 │   ├── plotting.py             Figures
 │   ├── reporting.py            The evaluation report
 │   ├── inference.py            Loading the champion and scoring
+│   ├── bundle.py               Model bundle export and loading, demo transactions
 │   ├── api.py                  FastAPI service
+│   ├── demo.html               Demo page served at /
 │   └── monitoring.py           Prediction log and drift detection
 ├── tests/                      One test module per package module
-├── .github/workflows/ci.yml    Lint, type check, test, and image smoke test
+├── .github/workflows/ci.yml    Lint, type check, test, and image smoke tests
 ├── Dockerfile
 ├── docker-compose.yml
 ├── Makefile
@@ -379,6 +400,7 @@ fraudguard/
 - Add an unsupervised baseline, such as an isolation forest, for fraud patterns that are missing from the labels.
 - Export Prometheus metrics, compute drift in a scheduled job, and track precision and recall as fraud labels arrive.
 - Slim the serving image by installing only the MLflow client.
+- Deploy from CI when a new champion is registered, authenticating with workload identity federation instead of stored keys.
 
 ## Ethical considerations
 

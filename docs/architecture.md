@@ -7,7 +7,7 @@ fraudguard has two runtime paths that share one Python package, `src/fraudguard`
 - **Training** (`scripts/train_model.py`) loads and validates the raw data, splits it, fits preprocessing and several models, selects a decision threshold, evaluates and explains the best model, and registers it in MLflow.
 - **Serving** (`scripts/run_api.py`) loads the model version that the `champion` alias points to and scores transactions over HTTP.
 
-The MLflow model registry is the only interface between the two. The API never reads training outputs from disk.
+The MLflow model registry is the only interface between the two. The API never reads training outputs from disk. A deployment away from the registry, such as the public demo, gets a bundle exported from it instead; [deployment.md](deployment.md) describes it.
 
 ```mermaid
 flowchart LR
@@ -44,7 +44,8 @@ flowchart LR
 | `plotting.py` | Evaluation and explanation figures |
 | `reporting.py` | The Markdown evaluation report |
 | `inference.py` | Loading the champion and scoring transactions |
-| `api.py` | HTTP endpoints, request validation, request logging, error handling |
+| `bundle.py` | Exporting the champion to a self-contained bundle, loading it, and choosing demo transactions |
+| `api.py` | HTTP endpoints, request validation, request logging, error handling, the demo page |
 | `monitoring.py` | Prediction log, service metrics, drift detection |
 
 ## Training pipeline
@@ -79,7 +80,7 @@ skops is used instead of pickle because it only rebuilds an explicit list of typ
 
 ## Serving
 
-At startup the API resolves the `champion` alias to a version number, then downloads that version. Resolving first means the reported version always matches the loaded files, even if the alias moves during startup. If loading fails, the service still starts: `/health` returns 503 and `/predict` refuses requests until a restart finds a model.
+At startup the API resolves the `champion` alias to a version number, then downloads that version. Resolving first means the reported version always matches the loaded files, even if the alias moves during startup. If loading fails, the service still starts: `/health` returns 503 and `/predict` refuses requests until a restart finds a model. When `api.model_bundle` is set, the API loads that bundle instead and never contacts the registry.
 
 | Endpoint | Purpose |
 | --- | --- |
@@ -87,6 +88,8 @@ At startup the API resolves the `champion` alias to a version number, then downl
 | `GET /health` | 200 with the model version when a model is loaded, otherwise 503 |
 | `GET /metrics` | Prediction counts, flagged rate, latency percentiles, input statistics, and drift status |
 | `GET /docs` | Interactive OpenAPI documentation |
+| `GET /` | Demo page. It scores the bundled test transactions through `/predict`, as any client would. |
+| `GET /demo/examples` | The bundled test transactions and test metrics, empty when the model came from the registry |
 
 Request handling:
 
@@ -127,6 +130,7 @@ All settings live in `config/config.yaml` and are validated with Pydantic at sta
 | `MLFLOW_TRACKING_URI` | `mlflow.tracking_uri` |
 | `FRAUDGUARD_MLFLOW_ARTIFACT_DIR` | `mlflow.artifact_dir` |
 | `FRAUDGUARD_API_HOST`, `FRAUDGUARD_API_PORT` | `api.host`, `api.port` |
+| `FRAUDGUARD_MODEL_BUNDLE` | `api.model_bundle`, a bundle to serve instead of the registry champion |
 | `FRAUDGUARD_PREDICTION_LOG_PATH` | `monitoring.prediction_log_path` |
 | `FRAUDGUARD_CONFIG_PATH` | Location of the configuration file |
 | `FRAUDGUARD_LOG_LEVEL` | Log level |
@@ -164,5 +168,6 @@ All three services use one image and run as an unprivileged user with uid 1000. 
 | --- | --- |
 | Lint, type check, and test | ruff, format check, mypy in strict mode, pytest with coverage (fails below 90%), then a training run on synthetic data |
 | Build and smoke test the image | Builds the image, validates the compose file, trains and serves inside a container, then calls `/health` and `/predict` |
+| Build and smoke test the Cloud Run image | Trains on synthetic data, exports a bundle, builds the Cloud Run image from the staged files, and checks `/health`, the demo page, and its examples |
 
-Nothing is deployed automatically.
+Nothing is deployed automatically. `make deploy` publishes the demo by hand; see [deployment.md](deployment.md).
